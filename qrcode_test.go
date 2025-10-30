@@ -256,3 +256,50 @@ func TestRoundedCornerRendering(t *testing.T) {
 		t.Fatalf("expected rounded renderer to paint module center, got index %d", got)
 	}
 }
+
+func TestRoundnessDefaultsAndClamping(t *testing.T) {
+	q, err := New("round", Medium)
+	if err != nil {
+		t.Fatalf("unexpected error from New: %v", err)
+	}
+
+	if q.Roundness != 0 {
+		t.Fatalf("expected default roundness 0, got %f", q.Roundness)
+	}
+
+	q.SetRoundness(-1)
+	if q.Roundness != 0 {
+		t.Fatalf("expected negative roundness to clamp to 0, got %f", q.Roundness)
+	}
+
+	q.SetRoundness(1.5)
+	if q.Roundness != 1 {
+		t.Fatalf("expected roundness to clamp to 1, got %f", q.Roundness)
+	}
+}
+
+func TestQuietZoneDefaultsAndOverrides(t *testing.T) {
+	q, err := New("quiet", Medium)
+	if err != nil {
+		t.Fatalf("unexpected error from New: %v", err)
+	}
+
+	if got := q.quietZoneModules(); got != 4 {
+		t.Fatalf("expected default quiet zone 4, got %d", got)
+	}
+
+	q.SetQuietZone(2)
+	if got := q.quietZoneModules(); got != 2 {
+		t.Fatalf("expected quiet zone 2 after SetQuietZone, got %d", got)
+	}
+
+	q.SetQuietZone(-1)
+	if got := q.quietZoneModules(); got != 4 {
+		t.Fatalf("expected quiet zone to reset to default 4, got %d", got)
+	}
+
+	q.DisableBorder = true
+	if got := q.quietZoneModules(); got != 0 {
+		t.Fatalf("expected quiet zone 0 when border disabled, got %d", got)
+	}
+}

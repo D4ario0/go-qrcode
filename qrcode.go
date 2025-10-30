@@ -75,6 +75,14 @@ func WithRoundness(roundness float64) Option {
 	}
 }
 
+// WithQuietZone sets the quiet-zone size (in modules) when creating a QRCode.
+// Pass -1 to restore the default (4 modules) or 0 to remove the border.
+func WithQuietZone(size int) Option {
+	return func(q *QRCode) {
+		q.SetQuietZone(size)
+	}
+}
+
 // Encode a QR Code and return a raw PNG image.
 //
 // size is both the image width and height in pixels. If size is too small then
@@ -155,6 +163,10 @@ type QRCode struct {
 	// modules. Values greater than 1 are clamped to 1.
 	Roundness float64
 
+	// QuietZoneSize overrides the module-width of the quiet zone. A value of -1
+	// defers to the default specified by the QR version.
+	QuietZoneSize int
+
 	encoder *dataEncoder
 	version qrCodeVersion
 
@@ -169,6 +181,20 @@ func (q *QRCode) SetRoundness(roundness float64) {
 	q.Roundness = clampRoundness(roundness)
 }
 
+// SetQuietZone sets the quiet-zone width in modules. Values below zero are
+// clamped to zero, except for -1 which restores the QR version default.
+func (q *QRCode) SetQuietZone(size int) {
+	if size < 0 {
+		if size == -1 {
+			q.QuietZoneSize = -1
+		} else {
+			q.QuietZoneSize = 0
+		}
+		return
+	}
+	q.QuietZoneSize = size
+}
+
 func clampRoundness(roundness float64) float64 {
 	if roundness < 0 {
 		return 0
@@ -177,6 +203,16 @@ func clampRoundness(roundness float64) float64 {
 		return 1
 	}
 	return roundness
+}
+
+func (q *QRCode) quietZoneModules() int {
+	if q.DisableBorder {
+		return 0
+	}
+	if q.QuietZoneSize >= 0 {
+		return q.QuietZoneSize
+	}
+	return q.version.quietZoneSize()
 }
 
 // New constructs a QRCode.
@@ -223,6 +259,7 @@ func New(content string, level RecoveryLevel, opts ...Option) (*QRCode, error) {
 
 		ForegroundColor: color.Black,
 		BackgroundColor: color.White,
+		QuietZoneSize:   -1,
 
 		encoder: encoder,
 		data:    encoded,
@@ -286,6 +323,7 @@ func NewWithForcedVersion(content string, version int, level RecoveryLevel, opts
 
 		ForegroundColor: color.Black,
 		BackgroundColor: color.White,
+		QuietZoneSize:   -1,
 
 		encoder: encoder,
 		data:    encoded,
@@ -575,7 +613,7 @@ func (q *QRCode) encode() {
 		var s *symbol
 		var err error
 
-		s, err = buildRegularSymbol(q.version, mask, encoded, !q.DisableBorder)
+		s, err = buildRegularSymbol(q.version, mask, encoded, q.quietZoneModules())
 
 		if err != nil {
 			log.Panic(err.Error())
