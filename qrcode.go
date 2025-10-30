@@ -64,6 +64,17 @@ import (
 	reedsolomon "github.com/D4ario0/go-qrcode/reedsolomon"
 )
 
+// Option configures a QRCode after construction.
+type Option func(*QRCode)
+
+// WithRoundness sets the roundness value when creating a QRCode. The value is
+// clamped to the range [0, 1].
+func WithRoundness(roundness float64) Option {
+	return func(q *QRCode) {
+		q.SetRoundness(roundness)
+	}
+}
+
 // Encode a QR Code and return a raw PNG image.
 //
 // size is both the image width and height in pixels. If size is too small then
@@ -71,10 +82,10 @@ import (
 // variable sized image to be returned: See the documentation for Image().
 //
 // To serve over HTTP, remember to send a Content-Type: image/png header.
-func Encode(content string, level RecoveryLevel, size int) ([]byte, error) {
+func Encode(content string, level RecoveryLevel, size int, opts ...Option) ([]byte, error) {
 	var q *QRCode
 
-	q, err := New(content, level)
+	q, err := New(content, level, opts...)
 
 	if err != nil {
 		return nil, err
@@ -88,10 +99,10 @@ func Encode(content string, level RecoveryLevel, size int) ([]byte, error) {
 // size is both the image width and height in pixels. If size is too small then
 // a larger image is silently written. Negative values for size cause a variable
 // sized image to be written: See the documentation for Image().
-func WriteFile(content string, level RecoveryLevel, size int, filename string) error {
+func WriteFile(content string, level RecoveryLevel, size int, filename string, opts ...Option) error {
 	var q *QRCode
 
-	q, err := New(content, level)
+	q, err := New(content, level, opts...)
 
 	if err != nil {
 		return err
@@ -107,18 +118,18 @@ func WriteFile(content string, level RecoveryLevel, size int, filename string) e
 // a larger image is silently written. Negative values for size cause a variable
 // sized image to be written: See the documentation for Image().
 func WriteColorFile(content string, level RecoveryLevel, size int, background,
-	foreground color.Color, filename string) error {
+	foreground color.Color, filename string, opts ...Option) error {
 
 	var q *QRCode
 
-	q, err := New(content, level)
-
-	q.BackgroundColor = background
-	q.ForegroundColor = foreground
+	q, err := New(content, level, opts...)
 
 	if err != nil {
 		return err
 	}
+
+	q.BackgroundColor = background
+	q.ForegroundColor = foreground
 
 	return q.WriteFile(size, filename)
 }
@@ -139,6 +150,11 @@ type QRCode struct {
 	// Disable the QR Code border.
 	DisableBorder bool
 
+	// Roundness controls the radius of outer module corners, expressed as a
+	// percentage of the module half-width. A value of 0 keeps classic square
+	// modules. Values greater than 1 are clamped to 1.
+	Roundness float64
+
 	encoder *dataEncoder
 	version qrCodeVersion
 
@@ -147,13 +163,29 @@ type QRCode struct {
 	mask   int
 }
 
+// SetRoundness switches module rendering from hard squares to squares with
+// rounded outer corners. Values outside the range [0, 1] are clamped.
+func (q *QRCode) SetRoundness(roundness float64) {
+	q.Roundness = clampRoundness(roundness)
+}
+
+func clampRoundness(roundness float64) float64 {
+	if roundness < 0 {
+		return 0
+	}
+	if roundness > 1 {
+		return 1
+	}
+	return roundness
+}
+
 // New constructs a QRCode.
 //
 //	var q *qrcode.QRCode
 //	q, err := qrcode.New("my content", qrcode.Medium)
 //
 // An error occurs if the content is too long.
-func New(content string, level RecoveryLevel) (*QRCode, error) {
+func New(content string, level RecoveryLevel, opts ...Option) (*QRCode, error) {
 	encoders := []dataEncoderType{dataEncoderType1To9, dataEncoderType10To26,
 		dataEncoderType27To40}
 
@@ -197,6 +229,12 @@ func New(content string, level RecoveryLevel) (*QRCode, error) {
 		version: *chosenVersion,
 	}
 
+	for _, opt := range opts {
+		if opt != nil {
+			opt(q)
+		}
+	}
+
 	return q, nil
 }
 
@@ -206,7 +244,7 @@ func New(content string, level RecoveryLevel) (*QRCode, error) {
 //	q, err := qrcode.NewWithForcedVersion("my content", 25, qrcode.Medium)
 //
 // An error occurs in case of invalid version.
-func NewWithForcedVersion(content string, version int, level RecoveryLevel) (*QRCode, error) {
+func NewWithForcedVersion(content string, version int, level RecoveryLevel, opts ...Option) (*QRCode, error) {
 	var encoder *dataEncoder
 
 	switch {
@@ -252,6 +290,12 @@ func NewWithForcedVersion(content string, version int, level RecoveryLevel) (*QR
 		encoder: encoder,
 		data:    encoded,
 		version: *chosenVersion,
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(q)
+		}
 	}
 
 	return q, nil
@@ -312,23 +356,151 @@ func (q *QRCode) Image(size int) image.Image {
 	// QR code bitmap.
 	bitmap := q.symbol.bitmap()
 
-	// Map each image pixel to the nearest QR code module.
 	modulesPerPixel := float64(realSize) / float64(size)
-	for y := 0; y < size; y++ {
-		y2 := int(float64(y) * modulesPerPixel)
-		for x := 0; x < size; x++ {
-			x2 := int(float64(x) * modulesPerPixel)
+	pixelsPerModule := float64(size) / float64(realSize)
+	roundness := clampRoundness(q.Roundness)
 
-			v := bitmap[y2][x2]
+	if roundness > 0 {
+		radius := pixelsPerModule * 0.5 * roundness
+		renderRoundedModules(img, bitmap, realSize, size, fgClr, pixelsPerModule, radius)
+	} else {
+		renderSquareModules(img, bitmap, realSize, size, fgClr, modulesPerPixel)
+	}
 
-			if v {
-				pos := img.PixOffset(x, y)
+	return img
+}
+
+// renderSquareModules fills each true bitmap module using a straightforward
+// pixel-to-module mapping.
+func renderSquareModules(img *image.Paletted, bitmap [][]bool, realSize, size int, fgClr uint8, modulesPerPixel float64) {
+	for py := 0; py < size; py++ {
+		moduleY := int(float64(py) * modulesPerPixel)
+		if moduleY >= realSize {
+			moduleY = realSize - 1
+		}
+		row := bitmap[moduleY]
+		for px := 0; px < size; px++ {
+			moduleX := int(float64(px) * modulesPerPixel)
+			if moduleX >= realSize {
+				moduleX = realSize - 1
+			}
+			if row[moduleX] {
+				pos := img.PixOffset(px, py)
 				img.Pix[pos] = fgClr
 			}
 		}
 	}
+}
 
-	return img
+// renderRoundedModules trims the outer corners of isolated modules to achieve
+// a rounded appearance while keeping edges shared with neighbors square.
+func renderRoundedModules(img *image.Paletted, bitmap [][]bool, realSize, size int, fgClr uint8, pixelsPerModule, radius float64) {
+	radiusSquared := radius * radius
+
+	for moduleY := 0; moduleY < realSize; moduleY++ {
+		yStart, yEnd := modulePixelRange(moduleY, realSize, size)
+		if yStart == yEnd {
+			continue
+		}
+		yStartF := float64(moduleY) * pixelsPerModule
+		yEndF := yStartF + pixelsPerModule
+
+		row := bitmap[moduleY]
+		for moduleX := 0; moduleX < realSize; moduleX++ {
+			if !row[moduleX] {
+				continue
+			}
+
+			xStart, xEnd := modulePixelRange(moduleX, realSize, size)
+			if xStart == xEnd {
+				continue
+			}
+			xStartF := float64(moduleX) * pixelsPerModule
+			xEndF := xStartF + pixelsPerModule
+
+			neighbors := moduleNeighborsAt(bitmap, moduleX, moduleY)
+
+			for py := yStart; py < yEnd; py++ {
+				pyCenter := float64(py) + 0.5
+				for px := xStart; px < xEnd; px++ {
+					pxCenter := float64(px) + 0.5
+
+					if shouldTrimCorner(pxCenter, pyCenter, xStartF, xEndF, yStartF, yEndF, radius, radiusSquared, neighbors) {
+						continue
+					}
+
+					pos := img.PixOffset(px, py)
+					img.Pix[pos] = fgClr
+				}
+			}
+		}
+	}
+}
+
+func modulePixelRange(index, realSize, size int) (int, int) {
+	start := index * size / realSize
+	end := (index + 1) * size / realSize
+	if end <= start {
+		end = start + 1
+	}
+	if end > size {
+		end = size
+	}
+	return start, end
+}
+
+type moduleNeighbors struct {
+	top    bool
+	bottom bool
+	left   bool
+	right  bool
+}
+
+func moduleNeighborsAt(bitmap [][]bool, x, y int) moduleNeighbors {
+	neighbors := moduleNeighbors{}
+	if y > 0 {
+		neighbors.top = bitmap[y-1][x]
+	}
+	if y+1 < len(bitmap) {
+		neighbors.bottom = bitmap[y+1][x]
+	}
+	if x > 0 {
+		neighbors.left = bitmap[y][x-1]
+	}
+	if x+1 < len(bitmap[y]) {
+		neighbors.right = bitmap[y][x+1]
+	}
+	return neighbors
+}
+
+func shouldTrimCorner(pxCenter, pyCenter, xStart, xEnd, yStart, yEnd, radius, radiusSquared float64, neighbors moduleNeighbors) bool {
+	if radius <= 0 {
+		return false
+	}
+
+	if !neighbors.top && !neighbors.left && pxCenter < xStart+radius && pyCenter < yStart+radius {
+		return outsideCorner(pxCenter, pyCenter, xStart+radius, yStart+radius, radiusSquared)
+	}
+
+	if !neighbors.top && !neighbors.right && pxCenter > xEnd-radius && pyCenter < yStart+radius {
+		return outsideCorner(pxCenter, pyCenter, xEnd-radius, yStart+radius, radiusSquared)
+	}
+
+	if !neighbors.bottom && !neighbors.left && pxCenter < xStart+radius && pyCenter > yEnd-radius {
+		return outsideCorner(pxCenter, pyCenter, xStart+radius, yEnd-radius, radiusSquared)
+	}
+
+	if !neighbors.bottom && !neighbors.right && pxCenter > xEnd-radius && pyCenter > yEnd-radius {
+		return outsideCorner(pxCenter, pyCenter, xEnd-radius, yEnd-radius, radiusSquared)
+	}
+
+	return false
+}
+
+func outsideCorner(pxCenter, pyCenter, cornerX, cornerY, radiusSquared float64) bool {
+	dx := pxCenter - cornerX
+	dy := pyCenter - cornerY
+	return dx*dx+dy*dy > radiusSquared
 }
 
 // PNG returns the QR Code as a PNG image.
