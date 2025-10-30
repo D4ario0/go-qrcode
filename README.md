@@ -31,6 +31,13 @@ A command-line tool `qrcode` will be built into `$GOPATH/bin/`.
 
         err := qrcode.WriteColorFile("https://example.org", qrcode.Medium, 256, color.Black, color.White, "qr.png")
 
+- **Create a QR code with custom roundness and quiet zone:**
+
+        qr, _ := qrcode.New("https://example.org", qrcode.Medium)
+        qr.SetRoundness(0.7) // defaults to 0 (square); 1 fully rounds outer corners
+        qr.SetQuietZone(2)   // defaults to 4 modules; use 0 to remove the border
+        png, err := qr.PNG(256)
+
 All examples use the qrcode.Medium error Recovery Level and create a fixed 256x256px size QR Code. The last function creates a white on black instead of black on white QR Code.
 
 ## Documentation
@@ -53,9 +60,13 @@ Flags:
   -d	disable QR Code border
   -i	invert black and white
   -o string
-    	out PNG file prefix, empty for stdout
+     	out PNG file prefix, empty for stdout
+  -quiet-zone int
+    	quiet zone width in modules (default 4)
+  -roundness float
+    	module corner roundness (0=square, 1=fully rounded)
   -s int
-    	image size (pixel) (default 256)
+     	image size (pixel) (default 256)
   -t	print as text-art on stdout
 
 Usage:
