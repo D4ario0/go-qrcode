@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	qrcode "github.com/skip2/go-qrcode"
+	qrcode "github.com/D4ario0/go-qrcode"
 )
 
 func main() {
@@ -18,6 +18,8 @@ func main() {
 	textArt := flag.Bool("t", false, "print as text-art on stdout")
 	negative := flag.Bool("i", false, "invert black and white")
 	disableBorder := flag.Bool("d", false, "disable QR Code border")
+	roundness := flag.Float64("roundness", 0, "module corner roundness (0=square, 1=fully rounded)")
+	quietZone := flag.Int("quiet-zone", -1, "quiet zone width in modules (default 4)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `qrcode -- QR Code encoder in Go
 https://github.com/skip2/go-qrcode
@@ -55,6 +57,14 @@ Usage:
 
 	if *disableBorder {
 		q.DisableBorder = true
+	}
+
+	if *roundness != 0 {
+		q.SetRoundness(*roundness)
+	}
+
+	if *quietZone >= 0 || *quietZone == -1 {
+		q.SetQuietZone(*quietZone)
 	}
 
 	if *textArt {

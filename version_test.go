@@ -6,7 +6,7 @@ package qrcode
 import (
 	"testing"
 
-	bitset "github.com/skip2/go-qrcode/bitset"
+	bitset "github.com/D4ario0/go-qrcode/bitset"
 )
 
 func TestFormatInfo(t *testing.T) {

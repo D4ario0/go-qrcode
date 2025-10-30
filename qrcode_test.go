@@ -4,6 +4,7 @@
 package qrcode
 
 import (
+	"image"
 	"strings"
 	"testing"
 )
@@ -171,5 +172,134 @@ func BenchmarkQRCodeMaximumSize(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		// 7089 is the maximum encodable number of numeric digits.
 		New(strings.Repeat("0", 7089), Low)
+	}
+}
+
+func TestRoundedCornerRendering(t *testing.T) {
+	qSquare, err := New("rounded", Medium)
+	if err != nil {
+		t.Fatalf("unexpected error creating qr: %v", err)
+	}
+
+	qSquare.encode()
+	realSize := qSquare.symbol.size
+	const pixelsPerModule = 4
+	imgSize := realSize * pixelsPerModule
+
+	bitmap := qSquare.symbol.bitmap()
+
+	findModule := func(predicate func(x, y int) bool) (int, int, bool) {
+		for y := 0; y < realSize; y++ {
+			row := bitmap[y]
+			for x := 0; x < realSize; x++ {
+				if !row[x] {
+					continue
+				}
+				// avoid finder/timing patterns
+				if x <= 7 || x >= realSize-7 || y <= 7 || y >= realSize-7 {
+					continue
+				}
+				if predicate(x, y) {
+					return x, y, true
+				}
+			}
+		}
+		return 0, 0, false
+	}
+
+	exposedX, exposedY, ok := findModule(func(x, y int) bool {
+		top := y > 0 && bitmap[y-1][x]
+		left := x > 0 && bitmap[y][x-1]
+		return !top && !left
+	})
+	if !ok {
+		t.Fatalf("could not locate exposed module for rounding test")
+	}
+
+	connectedX, connectedY, ok := findModule(func(x, y int) bool {
+		top := y > 0 && bitmap[y-1][x]
+		left := x > 0 && bitmap[y][x-1]
+		return top && left
+	})
+	if !ok {
+		t.Fatalf("could not locate connected module for rounding test")
+	}
+
+	imgSquare := qSquare.Image(imgSize).(*image.Paletted)
+	fgIdx := uint8(imgSquare.Palette.Index(qSquare.ForegroundColor))
+
+	exposedLeft := exposedX * pixelsPerModule
+	exposedTop := exposedY * pixelsPerModule
+	if got := imgSquare.ColorIndexAt(exposedLeft, exposedTop); got != fgIdx {
+		t.Fatalf("expected square renderer to paint exposed module corner, got index %d", got)
+	}
+
+	qRounded, err := New("rounded", Medium)
+	if err != nil {
+		t.Fatalf("unexpected error creating rounded qr: %v", err)
+	}
+	qRounded.SetRoundness(1.0)
+	imgRounded := qRounded.Image(imgSize).(*image.Paletted)
+
+	if got := imgRounded.ColorIndexAt(exposedLeft, exposedTop); got == fgIdx {
+		t.Fatalf("expected rounded renderer to trim exposed corner, got foreground index %d", got)
+	}
+
+	connectedLeft := connectedX * pixelsPerModule
+	connectedTop := connectedY * pixelsPerModule
+	if got := imgRounded.ColorIndexAt(connectedLeft, connectedTop); got != fgIdx {
+		t.Fatalf("expected rounded renderer to preserve shared edge corner, got index %d", got)
+	}
+
+	centerOffset := pixelsPerModule / 2
+	if got := imgRounded.ColorIndexAt(exposedLeft+centerOffset, exposedTop+centerOffset); got != fgIdx {
+		t.Fatalf("expected rounded renderer to paint module center, got index %d", got)
+	}
+}
+
+func TestRoundnessDefaultsAndClamping(t *testing.T) {
+	q, err := New("round", Medium)
+	if err != nil {
+		t.Fatalf("unexpected error from New: %v", err)
+	}
+
+	if q.Roundness != 0 {
+		t.Fatalf("expected default roundness 0, got %f", q.Roundness)
+	}
+
+	q.SetRoundness(-1)
+	if q.Roundness != 0 {
+		t.Fatalf("expected negative roundness to clamp to 0, got %f", q.Roundness)
+	}
+
+	q.SetRoundness(1.5)
+	if q.Roundness != 1 {
+		t.Fatalf("expected roundness to clamp to 1, got %f", q.Roundness)
+	}
+}
+
+func TestQuietZoneDefaultsAndOverrides(t *testing.T) {
+	q, err := New("quiet", Medium)
+	if err != nil {
+		t.Fatalf("unexpected error from New: %v", err)
+	}
+
+	if got := q.quietZoneModules(); got != 4 {
+		t.Fatalf("expected default quiet zone 4, got %d", got)
+	}
+
+	q.SetQuietZone(2)
+	if got := q.quietZoneModules(); got != 2 {
+		t.Fatalf("expected quiet zone 2 after SetQuietZone, got %d", got)
+	}
+
+	q.SetQuietZone(-1)
+	if got := q.quietZoneModules(); got != 4 {
+		t.Fatalf("expected quiet zone to reset to default 4, got %d", got)
+	}
+
+	q.DisableBorder = true
+	if got := q.quietZoneModules(); got != 0 {
+		t.Fatalf("expected quiet zone 0 when border disabled, got %d", got)
 	}
 }

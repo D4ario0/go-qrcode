@@ -4,7 +4,7 @@
 package qrcode
 
 import (
-	bitset "github.com/skip2/go-qrcode/bitset"
+	bitset "github.com/D4ario0/go-qrcode/bitset"
 )
 
 type regularSymbol struct {
@@ -105,11 +105,10 @@ var (
 )
 
 func buildRegularSymbol(version qrCodeVersion, mask int,
-	data *bitset.Bitset, includeQuietZone bool) (*symbol, error) {
+	data *bitset.Bitset, quietZoneSize int) (*symbol, error) {
 
-	quietZoneSize := 0
-	if includeQuietZone {
-		quietZoneSize = version.quietZoneSize()
+	if quietZoneSize < 0 {
+		quietZoneSize = 0
 	}
 
 	m := &regularSymbol{
