@@ -2,7 +2,7 @@
 
 <img src='https://skip.org/img/nyancat-youtube-qr.png' align='right'>
 
-Package qrcode implements a QR Code encoder. [![Build Status](https://travis-ci.org/D4ario0/go-qrcode.svg?branch=master)](https://travis-ci.org/D4ario0/go-qrcode)
+Package qrcode implements a QR Code encoder. [![Build Status](https://travis-ci.org/skip2/go-qrcode.svg?branch=master)](https://travis-ci.org/skip2/go-qrcode)
 
 A QR Code is a matrix (two-dimensional) barcode. Arbitrary content may be encoded, with URLs being a popular choice :)
 
@@ -42,11 +42,9 @@ All examples use the qrcode.Medium error Recovery Level and create a fixed 256x2
 
 ## Documentation
 
-[![godoc](https://godoc.org/github.com/D4ario0/go-qrcode?status.png)](https://godoc.org/github.com/D4ario0/go-qrcode)
+[![godoc](https://godoc.org/github.com/D4ario0/go-qrcode?status.png)](https://godoc.org/github.com/skip2/go-qrcode)
 
-## Demoapp
 
-[http://go-qrcode.appspot.com](http://go-qrcode.appspot.com)
 
 ## CLI
 
@@ -88,7 +86,7 @@ The maximum capacity of a QR Code varies according to the content encoded and th
 
 To aid QR Code reading software, QR codes have a built in whitespace border.
 
-If you know what you're doing, and don't want a border, see https://gist.github.com/D4ario0/7e3d8a82f5317df9be437f8ec8ec0b7d for how to do it. It's still recommended you include a border manually.
+If you know what you're doing, and don't want a border, see https://gist.github.com/skip2/7e3d8a82f5317df9be437f8ec8ec0b7d for how to do it. It's still recommended you include a border manually.
 
 ## Links
 
