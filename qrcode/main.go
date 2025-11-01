@@ -19,7 +19,7 @@ func main() {
 	negative := flag.Bool("i", false, "invert black and white")
 	disableBorder := flag.Bool("d", false, "disable QR Code border")
 	roundness := flag.Float64("roundness", 0, "module corner roundness (0=square, 1=fully rounded)")
-	quietZone := flag.Int("quiet-zone", -1, "quiet zone width in modules (default 4)")
+	quietZone := flag.Int("quiet-zone", 4, "quiet zone width in modules (default 4, -1 to use version default)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `qrcode -- QR Code encoder in Go
 https://github.com/skip2/go-qrcode
@@ -60,11 +60,16 @@ Usage:
 	}
 
 	if *roundness != 0 {
-		q.SetRoundness(*roundness)
+		q.Roundness = *roundness
 	}
 
-	if *quietZone >= 0 || *quietZone == -1 {
-		q.SetQuietZone(*quietZone)
+	switch {
+	case *quietZone == -1:
+		q.QuietZoneSize = -1
+	case *quietZone < -1:
+		q.QuietZoneSize = 0
+	default:
+		q.QuietZoneSize = *quietZone
 	}
 
 	if *textArt {

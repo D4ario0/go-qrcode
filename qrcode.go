@@ -64,25 +64,6 @@ import (
 	reedsolomon "github.com/D4ario0/go-qrcode/reedsolomon"
 )
 
-// Option configures a QRCode after construction.
-type Option func(*QRCode)
-
-// WithRoundness sets the roundness value when creating a QRCode. The value is
-// clamped to the range [0, 1].
-func WithRoundness(roundness float64) Option {
-	return func(q *QRCode) {
-		q.SetRoundness(roundness)
-	}
-}
-
-// WithQuietZone sets the quiet-zone size (in modules) when creating a QRCode.
-// Pass -1 to restore the default (4 modules) or 0 to remove the border.
-func WithQuietZone(size int) Option {
-	return func(q *QRCode) {
-		q.SetQuietZone(size)
-	}
-}
-
 // Encode a QR Code and return a raw PNG image.
 //
 // size is both the image width and height in pixels. If size is too small then
@@ -90,10 +71,10 @@ func WithQuietZone(size int) Option {
 // variable sized image to be returned: See the documentation for Image().
 //
 // To serve over HTTP, remember to send a Content-Type: image/png header.
-func Encode(content string, level RecoveryLevel, size int, opts ...Option) ([]byte, error) {
+func Encode(content string, level RecoveryLevel, size int) ([]byte, error) {
 	var q *QRCode
 
-	q, err := New(content, level, opts...)
+	q, err := New(content, level)
 
 	if err != nil {
 		return nil, err
@@ -107,10 +88,10 @@ func Encode(content string, level RecoveryLevel, size int, opts ...Option) ([]by
 // size is both the image width and height in pixels. If size is too small then
 // a larger image is silently written. Negative values for size cause a variable
 // sized image to be written: See the documentation for Image().
-func WriteFile(content string, level RecoveryLevel, size int, filename string, opts ...Option) error {
+func WriteFile(content string, level RecoveryLevel, size int, filename string) error {
 	var q *QRCode
 
-	q, err := New(content, level, opts...)
+	q, err := New(content, level)
 
 	if err != nil {
 		return err
@@ -126,11 +107,11 @@ func WriteFile(content string, level RecoveryLevel, size int, filename string, o
 // a larger image is silently written. Negative values for size cause a variable
 // sized image to be written: See the documentation for Image().
 func WriteColorFile(content string, level RecoveryLevel, size int, background,
-	foreground color.Color, filename string, opts ...Option) error {
+	foreground color.Color, filename string) error {
 
 	var q *QRCode
 
-	q, err := New(content, level, opts...)
+	q, err := New(content, level)
 
 	if err != nil {
 		return err
@@ -175,26 +156,6 @@ type QRCode struct {
 	mask   int
 }
 
-// SetRoundness switches module rendering from hard squares to squares with
-// rounded outer corners. Values outside the range [0, 1] are clamped.
-func (q *QRCode) SetRoundness(roundness float64) {
-	q.Roundness = clampRoundness(roundness)
-}
-
-// SetQuietZone sets the quiet-zone width in modules. Values below zero are
-// clamped to zero, except for -1 which restores the QR version default.
-func (q *QRCode) SetQuietZone(size int) {
-	if size < 0 {
-		if size == -1 {
-			q.QuietZoneSize = -1
-		} else {
-			q.QuietZoneSize = 0
-		}
-		return
-	}
-	q.QuietZoneSize = size
-}
-
 func clampRoundness(roundness float64) float64 {
 	if roundness < 0 {
 		return 0
@@ -209,10 +170,14 @@ func (q *QRCode) quietZoneModules() int {
 	if q.DisableBorder {
 		return 0
 	}
-	if q.QuietZoneSize >= 0 {
+	switch {
+	case q.QuietZoneSize == -1:
+		return q.version.quietZoneSize()
+	case q.QuietZoneSize < -1:
+		return 0
+	default:
 		return q.QuietZoneSize
 	}
-	return q.version.quietZoneSize()
 }
 
 // New constructs a QRCode.
@@ -221,7 +186,7 @@ func (q *QRCode) quietZoneModules() int {
 //	q, err := qrcode.New("my content", qrcode.Medium)
 //
 // An error occurs if the content is too long.
-func New(content string, level RecoveryLevel, opts ...Option) (*QRCode, error) {
+func New(content string, level RecoveryLevel) (*QRCode, error) {
 	encoders := []dataEncoderType{dataEncoderType1To9, dataEncoderType10To26,
 		dataEncoderType27To40}
 
@@ -259,17 +224,11 @@ func New(content string, level RecoveryLevel, opts ...Option) (*QRCode, error) {
 
 		ForegroundColor: color.Black,
 		BackgroundColor: color.White,
-		QuietZoneSize:   -1,
+		QuietZoneSize:   4,
 
 		encoder: encoder,
 		data:    encoded,
 		version: *chosenVersion,
-	}
-
-	for _, opt := range opts {
-		if opt != nil {
-			opt(q)
-		}
 	}
 
 	return q, nil
@@ -281,7 +240,7 @@ func New(content string, level RecoveryLevel, opts ...Option) (*QRCode, error) {
 //	q, err := qrcode.NewWithForcedVersion("my content", 25, qrcode.Medium)
 //
 // An error occurs in case of invalid version.
-func NewWithForcedVersion(content string, version int, level RecoveryLevel, opts ...Option) (*QRCode, error) {
+func NewWithForcedVersion(content string, version int, level RecoveryLevel) (*QRCode, error) {
 	var encoder *dataEncoder
 
 	switch {
@@ -323,17 +282,11 @@ func NewWithForcedVersion(content string, version int, level RecoveryLevel, opts
 
 		ForegroundColor: color.Black,
 		BackgroundColor: color.White,
-		QuietZoneSize:   -1,
+		QuietZoneSize:   4,
 
 		encoder: encoder,
 		data:    encoded,
 		version: *chosenVersion,
-	}
-
-	for _, opt := range opts {
-		if opt != nil {
-			opt(q)
-		}
 	}
 
 	return q, nil

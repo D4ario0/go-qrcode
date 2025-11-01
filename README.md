@@ -34,8 +34,8 @@ A command-line tool `qrcode` will be built into `$GOPATH/bin/`.
 - **Create a QR code with custom roundness and quiet zone:**
 
         qr, _ := qrcode.New("https://example.org", qrcode.Medium)
-        qr.SetRoundness(0.7) // defaults to 0 (square); 1 fully rounds outer corners
-        qr.SetQuietZone(2)   // defaults to 4 modules; use 0 to remove the border
+        qr.Roundness = 0.7        // defaults to 0 (square); 1 fully rounds outer corners
+        qr.QuietZoneSize = 2       // defaults to 4 modules; use 0 to remove the border
         png, err := qr.PNG(256)
 
 ## Library API
@@ -53,31 +53,23 @@ if _, err := w.Write(png); err != nil { // w can be os.Stdout or http.ResponseWr
 }
 ```
 
-### Functional options
+### Configuration
 
-Configuration is expressed through functional options so the same parameters are available across `New`, `Encode`, `WriteFile`, and `WriteColorFile`:
-
-| Option | Description |
-| --- | --- |
-| `WithRoundness(value float64)` | Sets module roundness. `0` keeps hard squares; `1` fully rounds exposed corners (values are clamped into `[0,1]`). |
-| `WithQuietZone(size int)` | Overrides the quiet-zone width in modules. Use `-1` to restore the default (`4`), or `0` to remove it entirely. |
-| `WithForegroundColor(color.Color)` / `WithBackgroundColor(color.Color)` | Override individual colors. |
-| `WithColors(fg, bg color.Color)` | Convenience helper for setting both colors at once. |
-| `WithBorderDisabled()` / `WithBorderEnabled()` | Explicitly toggle the border regardless of other settings. |
-
-Example combining several options:
+Customize a QR code by mutating the exported fields on the `QRCode` returned by
+`New`. Defaults are sensible (square modules, 4-module quiet zone, black on
+white), but you can override them in place:
 
 ```go
-qr, err := qrcode.New(
-    "https://example.org",
-    qrcode.High,
-    qrcode.WithRoundness(1.0),
-    qrcode.WithQuietZone(2),
-    qrcode.WithColors(color.Black, color.RGBA{240, 240, 240, 255}),
-)
+qr, err := qrcode.New("https://example.org", qrcode.High)
 if err != nil {
     log.Fatal(err)
 }
+
+qr.Roundness = 1.0                         // clamp occurs when rendering
+qr.QuietZoneSize = 2                        // set -1 to restore version default, < -1 clamps to 0
+qr.DisableBorder = false                    // true removes the quiet zone entirely
+qr.ForegroundColor = color.Black
+qr.BackgroundColor = color.RGBA{240, 240, 240, 255}
 
 png, err := qr.PNG(300)
 if err != nil {
@@ -89,32 +81,8 @@ if err := os.WriteFile("rounded.png", png, 0o644); err != nil {
 }
 ```
 
-### Serving over HTTP
-
-Stream PNG output directly to an `http.ResponseWriter` using the same option
-set:
-
-```go
-func handler(w http.ResponseWriter, r *http.Request) {
-    qr, err := qrcode.New(
-        r.FormValue("payload"),
-        qrcode.High,
-        qrcode.WithRoundness(1.0),
-        qrcode.WithQuietZone(2),
-    )
-    if err != nil {
-        http.Error(w, "encode failed", http.StatusInternalServerError)
-        return
-    }
-
-    w.Header().Set("Content-Type", "image/png")
-    w.WriteHeader(http.StatusOK)
-
-    if err := qr.Write(300, w); err != nil {
-        http.Error(w, "stream failed", http.StatusInternalServerError)
-    }
-}
-```
+To stream over HTTP, configure the code exactly the same way before writing to
+an `http.ResponseWriter`.
 
 All examples use the qrcode.Medium error Recovery Level and create a fixed 256x256px size QR Code. The last function creates a white on black instead of black on white QR Code.
 

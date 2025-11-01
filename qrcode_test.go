@@ -238,7 +238,7 @@ func TestRoundedCornerRendering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error creating rounded qr: %v", err)
 	}
-	qRounded.SetRoundness(1.0)
+	qRounded.Roundness = 1.0
 	imgRounded := qRounded.Image(imgSize).(*image.Paletted)
 
 	if got := imgRounded.ColorIndexAt(exposedLeft, exposedTop); got == fgIdx {
@@ -267,14 +267,14 @@ func TestRoundnessDefaultsAndClamping(t *testing.T) {
 		t.Fatalf("expected default roundness 0, got %f", q.Roundness)
 	}
 
-	q.SetRoundness(-1)
-	if q.Roundness != 0 {
-		t.Fatalf("expected negative roundness to clamp to 0, got %f", q.Roundness)
+	q.Roundness = -1
+	if got := clampRoundness(q.Roundness); got != 0 {
+		t.Fatalf("expected negative roundness to clamp to 0, got %f", got)
 	}
 
-	q.SetRoundness(1.5)
-	if q.Roundness != 1 {
-		t.Fatalf("expected roundness to clamp to 1, got %f", q.Roundness)
+	q.Roundness = 1.5
+	if got := clampRoundness(q.Roundness); got != 1 {
+		t.Fatalf("expected roundness to clamp to 1, got %f", got)
 	}
 }
 
@@ -288,14 +288,20 @@ func TestQuietZoneDefaultsAndOverrides(t *testing.T) {
 		t.Fatalf("expected default quiet zone 4, got %d", got)
 	}
 
-	q.SetQuietZone(2)
+	q.QuietZoneSize = 2
 	if got := q.quietZoneModules(); got != 2 {
-		t.Fatalf("expected quiet zone 2 after SetQuietZone, got %d", got)
+		t.Fatalf("expected quiet zone 2 after assignment, got %d", got)
 	}
 
-	q.SetQuietZone(-1)
-	if got := q.quietZoneModules(); got != 4 {
-		t.Fatalf("expected quiet zone to reset to default 4, got %d", got)
+	q.QuietZoneSize = -1
+	expectedDefault := q.version.quietZoneSize()
+	if got := q.quietZoneModules(); got != expectedDefault {
+		t.Fatalf("expected quiet zone to reset to version default %d, got %d", expectedDefault, got)
+	}
+
+	q.QuietZoneSize = -5
+	if got := q.quietZoneModules(); got != 0 {
+		t.Fatalf("expected quiet zone to clamp to 0 when set below -1, got %d", got)
 	}
 
 	q.DisableBorder = true
